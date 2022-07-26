@@ -26,6 +26,6 @@ def get_stats(is_image_exists: bool = None, min_age: int = None, max_age: int = 
 
 
 @app.on_event("startup")
-@repeat_every(seconds=30 * 1)
+@repeat_every(seconds=60 * 60)
 def process_input_data_task() -> None:
     data_processor.update_data()

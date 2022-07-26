@@ -1,7 +1,8 @@
-import csv
 import json
 import os
 from datetime import datetime
+from io import BytesIO
+
 import pandas as pd
 
 from minio import Minio
@@ -48,21 +49,25 @@ class DataProcessor:
                 [user_id, row["first_name"], row["last_name"], row["birthts"], img_path]
             )
 
-        with open("output.csv", "w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(
-                ["user_id", "first_name", "last_name", "birthts", "img_path"]
-            )
-            writer.writerows(rows)
+        df = pd.DataFrame(
+            rows, columns=["user_id", "first_name", "last_name", "birthts", "img_path"]
+        )
+        output_csv = df.to_csv().encode("utf-8")
 
-        self.client.fput_object("datalake", "output.csv", "output.csv")
+        self.client.put_object(
+            "datalake",
+            "processed_data/output.csv",
+            data=BytesIO(output_csv),
+            length=len(output_csv),
+            content_type="application/csv",
+        )
 
     def get_users(self, is_image_exists, min_age, max_age):
         where = get_where_clause(is_image_exists, min_age, max_age)
 
         with self.client.select_object_content(
             "datalake",
-            "output.csv",
+            "processed_data/output.csv",
             SelectRequest(
                 f"select * from S3Object {where}",
                 CSVInputSerialization(file_header_info="USE"),
@@ -80,7 +85,7 @@ class DataProcessor:
 
         with self.client.select_object_content(
             "datalake",
-            "output.csv",
+            "processed_data/output.csv",
             SelectRequest(
                 f"select AVG(birthts) from S3Object {where}",
                 CSVInputSerialization(file_header_info="USE"),
