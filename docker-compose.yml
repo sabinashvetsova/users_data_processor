@@ -24,6 +24,7 @@ services:
       /usr/bin/mc policy download myminio/datalake;
       exit 0;
       "
+
   web:
     build: .
     environment:

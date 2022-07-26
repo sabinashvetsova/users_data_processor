@@ -4,6 +4,7 @@ from datetime import datetime
 from io import BytesIO
 
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 
 from minio import Minio
 from minio.select import (
@@ -17,19 +18,24 @@ from app.utils import get_where_clause
 
 ACCESS_KEY = os.environ.get("ACCESS_KEY")
 SECRET_KEY = os.environ.get("SECRET_KEY")
+HOST = "minio"
+PORT = 9000
+BUCKET_NAME = "datalake"
+OUTPUT_FILE = "processed_data/output.csv"
 
 
 class DataProcessor:
     def __init__(self):
         self.client = Minio(
-            "minio:9000", access_key=ACCESS_KEY, secret_key=SECRET_KEY, secure=False
+            f"{HOST}:{PORT}", access_key=ACCESS_KEY, secret_key=SECRET_KEY, secure=False
         )
 
     def update_data(self):
+        """Aggregates data into a single CSV file."""
         rows = []
         csv_files = []
         png_files = []
-        files = self.client.list_objects("datalake", prefix="02-src-data/")
+        files = self.client.list_objects(BUCKET_NAME, prefix="02-src-data/")
 
         for file in files:
             if file.object_name.endswith(".csv"):
@@ -55,19 +61,20 @@ class DataProcessor:
         output_csv = df.to_csv().encode("utf-8")
 
         self.client.put_object(
-            "datalake",
-            "processed_data/output.csv",
+            BUCKET_NAME,
+            OUTPUT_FILE,
             data=BytesIO(output_csv),
             length=len(output_csv),
             content_type="application/csv",
         )
 
     def get_users(self, is_image_exists, min_age, max_age):
+        """Get filtered records from DB."""
         where = get_where_clause(is_image_exists, min_age, max_age)
 
         with self.client.select_object_content(
-            "datalake",
-            "processed_data/output.csv",
+            BUCKET_NAME,
+            OUTPUT_FILE,
             SelectRequest(
                 f"select * from S3Object {where}",
                 CSVInputSerialization(file_header_info="USE"),
@@ -78,14 +85,15 @@ class DataProcessor:
             for data in result.stream():
                 users = json.loads(f"[{data.decode('utf8').strip(',')}]")
 
-        return users
+        return {"users": users}
 
     def get_average_age(self, is_image_exists, min_age, max_age):
+        """Calculates and returns the average age of users matching the filters."""
         where = get_where_clause(is_image_exists, min_age, max_age)
 
         with self.client.select_object_content(
-            "datalake",
-            "processed_data/output.csv",
+            BUCKET_NAME,
+            OUTPUT_FILE,
             SelectRequest(
                 f"select AVG(birthts) from S3Object {where}",
                 CSVInputSerialization(file_header_info="USE"),
@@ -98,9 +106,8 @@ class DataProcessor:
 
         if result.strip():
             average_birth_ts = float(result)
-            current_year = datetime.now().year
-            average_birth_year = datetime.fromtimestamp(average_birth_ts / 1000.0).year
-            average_age = current_year - average_birth_year
+            average_birth_date = datetime.fromtimestamp(average_birth_ts / 1000.0)
+            average_age = relativedelta(datetime.now(), average_birth_date).years
         else:
             average_age = None
 
