@@ -58,7 +58,7 @@ class DataProcessor:
         df = pd.DataFrame(
             rows, columns=["user_id", "first_name", "last_name", "birthts", "img_path"]
         )
-        output_csv = df.to_csv().encode("utf-8")
+        output_csv = df.to_csv(index=False).encode("utf-8")
 
         self.client.put_object(
             BUCKET_NAME,
